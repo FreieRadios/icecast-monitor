@@ -228,21 +228,21 @@ function listenerMetrics(): string[] {
   if (listenersByStream.size === 0) return [];
   const lines: string[] = [];
 
-  lines.push("# HELP icecast_listeners_current Current listeners per stream");
+  lines.push("# HELP icecast_listeners_current Current listener count");
   lines.push("# TYPE icecast_listeners_current gauge");
   let combinedCurrent = 0;
   for (const [mount, stats] of listenersByStream) {
-    lines.push(`icecast_listeners_stream_${mount}_current ${stats.current}`);
+    lines.push(`icecast_listeners_current{stream="${mount}"} ${stats.current}`);
     combinedCurrent += stats.current;
   }
   lines.push(`icecast_listeners_combined_current ${combinedCurrent}`);
   lines.push("");
 
-  lines.push("# HELP icecast_listeners_peak Peak listeners per stream");
+  lines.push("# HELP icecast_listeners_peak Peak listener count");
   lines.push("# TYPE icecast_listeners_peak gauge");
   let combinedPeak = 0;
   for (const [mount, stats] of listenersByStream) {
-    lines.push(`icecast_listeners_stream_${mount}_peak ${stats.peak}`);
+    lines.push(`icecast_listeners_peak{stream="${mount}"} ${stats.peak}`);
     combinedPeak += stats.peak;
   }
   lines.push(`icecast_listeners_combined_peak ${combinedPeak}`);

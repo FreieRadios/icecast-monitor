@@ -1,4 +1,4 @@
-# monitor-icecast
+# icecast-monitor
 
 Monitors an Icecast stream and exposes Prometheus metrics.
 
@@ -14,10 +14,10 @@ Connects to the stream, pipes audio through ffmpeg for peak analysis, and auto-r
 | `icecast_audio_peak_right_dbfs` | gauge | Audio peak level right channel in dBFS (1s window) |
 | `icecast_reconnect_attempts_total` | counter | Cumulative reconnect count |
 | `icecast_process_start_time_seconds` | gauge | Process start time (unix epoch) |
-| `icecast_listeners_stream_<mount>_current` | gauge | Current listeners per stream |
-| `icecast_listeners_stream_<mount>_peak` | gauge | Peak listeners per stream |
-| `icecast_listeners_combined_current` | gauge | Current listeners across all streams |
-| `icecast_listeners_combined_peak` | gauge | Peak listeners across all streams |
+| `icecast_listeners_current{stream="..."}` | gauge | Current listeners per stream |
+| `icecast_listeners_peak{stream="..."}` | gauge | Peak listeners per stream |
+| `icecast_listeners_combined_current` | gauge | Total current listeners across all streams |
+| `icecast_listeners_combined_peak` | gauge | Total peak listeners across all streams |
 
 Listener metrics require `STREAM_STATUS_PAGE` to be set. Mount names are derived from the stream's `listenurl` pathname (e.g. `/rdl` becomes `rdl`, `/rdl_hq.mp3` becomes `rdl_hq_mp3`).
 
