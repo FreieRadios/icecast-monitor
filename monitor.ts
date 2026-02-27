@@ -17,8 +17,10 @@ if (!STREAM_URL) {
 
 let connected = 0;
 let downloadRate = 0; // bytes/sec
-let peakL = -Infinity; // dBFS
+let peakL = -Infinity; // dBFS, max-hold between scrapes
 let peakR = -Infinity;
+let accumPeakL = -Infinity; // accumulator: max across 1s windows
+let accumPeakR = -Infinity;
 let reconnectAttempts = 0;
 const processStartTime = Date.now() / 1000;
 
@@ -51,6 +53,9 @@ Deno.serve({ port: METRICS_PORT, onListen: ({ port }) => {
   if (new URL(req.url).pathname !== "/metrics") {
     return new Response("see /metrics\n", { status: 302, headers: { location: "/metrics" } });
   }
+  // flush accumulated peaks: take max-hold since last scrape, then reset
+  if (isFinite(accumPeakL)) { peakL = accumPeakL; accumPeakL = -Infinity; }
+  if (isFinite(accumPeakR)) { peakR = accumPeakR; accumPeakR = -Infinity; }
   const body = [
     "# HELP icecast_up Connection status (0=down, 1=up)",
     "# TYPE icecast_up gauge",
@@ -94,6 +99,8 @@ async function monitor() {
     downloadRate = 0;
     peakL = -Infinity;
     peakR = -Infinity;
+    accumPeakL = -Infinity;
+    accumPeakR = -Infinity;
     reconnectAttempts++;
     console.log(`reconnecting in ${RECONNECT_DELAY_MS}ms (attempt #${reconnectAttempts})...`);
     await delay(RECONNECT_DELAY_MS);
@@ -202,14 +209,14 @@ function parsePeakLine(line: string) {
   if (isNaN(val)) return;
 
   if (key === "lavfi.astats.1.Peak_level" || key === "lavfi.astats.Overall.Peak_level") {
-    peakL = val;
+    accumPeakL = Math.max(accumPeakL, val);
   }
   if (key === "lavfi.astats.2.Peak_level") {
-    peakR = val;
+    accumPeakR = Math.max(accumPeakR, val);
   }
   // mono streams: mirror to both channels from Overall
-  if (key === "lavfi.astats.Overall.Peak_level" && !isFinite(peakR)) {
-    peakR = val;
+  if (key === "lavfi.astats.Overall.Peak_level" && !isFinite(accumPeakR)) {
+    accumPeakR = Math.max(accumPeakR, val);
   }
 }
 
