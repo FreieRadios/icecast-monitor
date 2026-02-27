@@ -4,6 +4,8 @@ const STREAM_URL = Deno.env.get("ICECAST_URL") ?? Deno.args[0];
 const METRICS_PORT = parseInt(Deno.env.get("METRICS_PORT") ?? "9101");
 const RECONNECT_DELAY_MS = parseInt(Deno.env.get("RECONNECT_DELAY_MS") ?? "3000");
 const STALL_TIMEOUT_MS = parseInt(Deno.env.get("STALL_TIMEOUT_MS") ?? "10000");
+const STREAM_STATUS_PAGE = Deno.env.get("STREAM_STATUS_PAGE") ?? "";
+const LISTENER_POLL_MS = parseInt(Deno.env.get("LISTENER_POLL_MS") ?? "15000");
 
 if (!STREAM_URL) {
   console.error("Usage: monitor.ts <icecast-url>");
@@ -19,6 +21,13 @@ let peakL = -Infinity; // dBFS
 let peakR = -Infinity;
 let reconnectAttempts = 0;
 const processStartTime = Date.now() / 1000;
+
+// listener stats from status-json.xsl
+interface ListenerStats {
+  current: number;
+  peak: number;
+}
+let listenersByStream: Map<string, ListenerStats> = new Map();
 
 // rate tracking
 let bytesThisWindow = 0;
@@ -51,10 +60,13 @@ Deno.serve({ port: METRICS_PORT, onListen: ({ port }) => {
     "# TYPE icecast_download_rate_bytes_per_second gauge",
     `icecast_download_rate_bytes_per_second ${downloadRate.toFixed(1)}`,
     "",
-    "# HELP icecast_audio_peak_dbfs Audio peak level in dBFS",
-    "# TYPE icecast_audio_peak_dbfs gauge",
-    `icecast_audio_peak_dbfs{channel="left"} ${isFinite(peakL) ? peakL.toFixed(2) : "NaN"}`,
-    `icecast_audio_peak_dbfs{channel="right"} ${isFinite(peakR) ? peakR.toFixed(2) : "NaN"}`,
+    "# HELP icecast_audio_peak_left_dbfs Audio peak level left channel in dBFS",
+    "# TYPE icecast_audio_peak_left_dbfs gauge",
+    `icecast_audio_peak_left_dbfs ${isFinite(peakL) ? peakL.toFixed(2) : "NaN"}`,
+    "",
+    "# HELP icecast_audio_peak_right_dbfs Audio peak level right channel in dBFS",
+    "# TYPE icecast_audio_peak_right_dbfs gauge",
+    `icecast_audio_peak_right_dbfs ${isFinite(peakR) ? peakR.toFixed(2) : "NaN"}`,
     "",
     "# HELP icecast_reconnect_attempts_total Total reconnection attempts",
     "# TYPE icecast_reconnect_attempts_total counter",
@@ -64,6 +76,7 @@ Deno.serve({ port: METRICS_PORT, onListen: ({ port }) => {
     "# TYPE icecast_process_start_time_seconds gauge",
     `icecast_process_start_time_seconds ${processStartTime.toFixed(3)}`,
     "",
+    ...listenerMetrics(),
   ].join("\n");
   return new Response(body, { headers: { "content-type": "text/plain; version=0.0.4; charset=utf-8" } });
 });
@@ -200,8 +213,75 @@ function parsePeakLine(line: string) {
   }
 }
 
+// --- listener stats from icecast status page ---
+
+function sanitizeMount(listenurl: string): string {
+  try {
+    const path = new URL(listenurl).pathname;
+    return path.replace(/^\//, "").replace(/[^a-zA-Z0-9_]/g, "_");
+  } catch {
+    return listenurl.replace(/[^a-zA-Z0-9_]/g, "_");
+  }
+}
+
+function listenerMetrics(): string[] {
+  if (listenersByStream.size === 0) return [];
+  const lines: string[] = [];
+
+  lines.push("# HELP icecast_listeners_current Current listeners per stream");
+  lines.push("# TYPE icecast_listeners_current gauge");
+  let combinedCurrent = 0;
+  for (const [mount, stats] of listenersByStream) {
+    lines.push(`icecast_listeners_stream_${mount}_current ${stats.current}`);
+    combinedCurrent += stats.current;
+  }
+  lines.push(`icecast_listeners_combined_current ${combinedCurrent}`);
+  lines.push("");
+
+  lines.push("# HELP icecast_listeners_peak Peak listeners per stream");
+  lines.push("# TYPE icecast_listeners_peak gauge");
+  let combinedPeak = 0;
+  for (const [mount, stats] of listenersByStream) {
+    lines.push(`icecast_listeners_stream_${mount}_peak ${stats.peak}`);
+    combinedPeak += stats.peak;
+  }
+  lines.push(`icecast_listeners_combined_peak ${combinedPeak}`);
+  lines.push("");
+
+  return lines;
+}
+
+async function pollListeners() {
+  if (!STREAM_STATUS_PAGE) return;
+  console.log(`polling listeners from ${STREAM_STATUS_PAGE} every ${LISTENER_POLL_MS}ms`);
+  while (true) {
+    try {
+      const resp = await fetch(STREAM_STATUS_PAGE);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const json = await resp.json();
+      const sources = json?.icestats?.source;
+      if (!sources) throw new Error("no icestats.source in response");
+
+      const sourceList = Array.isArray(sources) ? sources : [sources];
+      const updated = new Map<string, ListenerStats>();
+      for (const src of sourceList) {
+        const mount = sanitizeMount(src.listenurl ?? src.server_name ?? "unknown");
+        updated.set(mount, {
+          current: src.listeners ?? 0,
+          peak: src.listener_peak ?? 0,
+        });
+      }
+      listenersByStream = updated;
+    } catch (e) {
+      console.error("listener poll error:", (e as Error).message ?? e);
+    }
+    await delay(LISTENER_POLL_MS);
+  }
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+pollListeners();
 monitor();

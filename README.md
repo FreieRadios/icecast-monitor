@@ -10,9 +10,16 @@ Connects to the stream, pipes audio through ffmpeg for peak analysis, and auto-r
 |---|---|---|
 | `icecast_up` | gauge | Connection status (0/1) |
 | `icecast_download_rate_bytes_per_second` | gauge | Stream throughput |
-| `icecast_audio_peak_dbfs{channel}` | gauge | Audio peak level in dBFS (1s window) |
+| `icecast_audio_peak_left_dbfs` | gauge | Audio peak level left channel in dBFS (1s window) |
+| `icecast_audio_peak_right_dbfs` | gauge | Audio peak level right channel in dBFS (1s window) |
 | `icecast_reconnect_attempts_total` | counter | Cumulative reconnect count |
 | `icecast_process_start_time_seconds` | gauge | Process start time (unix epoch) |
+| `icecast_listeners_stream_<mount>_current` | gauge | Current listeners per stream |
+| `icecast_listeners_stream_<mount>_peak` | gauge | Peak listeners per stream |
+| `icecast_listeners_combined_current` | gauge | Current listeners across all streams |
+| `icecast_listeners_combined_peak` | gauge | Peak listeners across all streams |
+
+Listener metrics require `STREAM_STATUS_PAGE` to be set. Mount names are derived from the stream's `listenurl` pathname (e.g. `/rdl` becomes `rdl`, `/rdl_hq.mp3` becomes `rdl_hq_mp3`).
 
 ## Usage
 
@@ -28,6 +35,8 @@ deno run --allow-net --allow-run --allow-env monitor.ts https://radio.example/st
 | `METRICS_PORT` | `9101` | Prometheus scrape port |
 | `RECONNECT_DELAY_MS` | `3000` | Delay before reconnecting |
 | `STALL_TIMEOUT_MS` | `10000` | Abort if no data received within this window |
+| `STREAM_STATUS_PAGE` | — | Icecast status URL (e.g. `https://radio.example/status-json.xsl`) |
+| `LISTENER_POLL_MS` | `15000` | How often to poll the status page |
 
 ## Docker
 
