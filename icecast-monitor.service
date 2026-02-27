@@ -1,0 +1,17 @@
+[Unit]
+Description=Icecast stream monitor (Prometheus metrics)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env deno run --allow-net --allow-run --allow-env %h/scripts/icecast-monitor/monitor.ts
+Restart=on-failure
+RestartSec=5
+Environment=ICECAST_URL=https://radio.exapmle/stream.mp3
+Environment=METRICS_PORT=9101
+Environment=STALL_TIMEOUT_MS=10000
+Environment=RECONNECT_DELAY_MS=3000
+
+[Install]
+WantedBy=default.target

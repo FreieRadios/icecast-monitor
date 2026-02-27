@@ -1,0 +1,8 @@
+services:
+  icecast-monitor:
+    build: .
+    restart: unless-stopped
+    expose:
+      - "9101"
+    env_file:
+      - .env
